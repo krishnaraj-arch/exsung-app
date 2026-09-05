@@ -49,7 +49,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
     fun syncNewCallLogs() {
         try {
             val lastSyncedDate = prefs.getLong(PREF_LAST_SYNCED_DATE, 0L)
-            DebugLogger.log("SYNC", "Scanning system CallLog database for new calls...")
+            Log.d("CallLogEngine", "Scanning system CallLog database for new calls...")
 
             val cursor: Cursor? = context.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
@@ -98,7 +98,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
 
                     // Calculate Call End Time: startDateMs + (durationSec * 1000)
                     val callEndTimeMs = startDateMs + (durationSec * 1000L)
-                    DebugLogger.log("CALL_DETECTED", "📞 Call: $rawName ($rawNumber) | Type: $callType | Duration: $durationStr")
+                    Log.d("CallLogEngine", "Call: $rawName ($rawNumber) | Type: $callType | Duration: $durationStr")
 
                     // Search MediaStore & recording directories for matching audio file
                     val matchedRecordingFile = findMatchingAudioFile(callEndTimeMs, startDateMs, rawNumber)
@@ -125,11 +125,10 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
             }
 
             if (callCount == 0) {
-                DebugLogger.log("SYNC", "No new calls found in Android CallLog database.")
+                Log.d("CallLogEngine", "No new calls found in Android CallLog database.")
             }
         } catch (e: Exception) {
             Log.e("CallLogEngine", "Call log sync exception: ${e.message}")
-            DebugLogger.log("ERROR", "Call log sync exception: ${e.message}")
         }
     }
 
@@ -140,7 +139,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
         val maxDiffMs = 180000L // 3 minutes matching window
         val cleanNumber = rawNumber.replace("+", "").replace(" ", "").trim()
 
-        DebugLogger.log("AUDIO_SCAN", "🔍 Searching MediaStore & folders for audio created near call end time ($callEndTimeMs)...")
+        Log.d("CallLogEngine", "Searching MediaStore & folders for audio created near call end time ($callEndTimeMs)...")
 
         // METHOD 1: Query System MediaStore across ENTIRE phone storage
         try {
@@ -178,18 +177,18 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     val diffStart = abs(fileTimeMs - startDateMs)
 
                     if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
-                        DebugLogger.log("MATCH", "✅ MediaStore matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
+                        Log.d("CallLogEngine", "MediaStore matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
                         return file
                     }
 
                     if (cleanNumber.length >= 6 && file.name.lowercase().contains(cleanNumber)) {
-                        DebugLogger.log("MATCH", "✅ MediaStore matched audio by number: ${file.name} | Path: ${file.absolutePath}")
+                        Log.d("CallLogEngine", "MediaStore matched audio by number: ${file.name} | Path: ${file.absolutePath}")
                         return file
                     }
                 }
             }
         } catch (e: Exception) {
-            DebugLogger.log("WARN", "MediaStore query exception: ${e.message}")
+            Log.w("CallLogEngine", "MediaStore query exception: ${e.message}")
         }
 
         // METHOD 2: Direct Recursive Folder Search across RECORDING_FOLDERS
@@ -201,7 +200,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
             if (matched != null) return matched
         }
 
-        DebugLogger.log("NO_AUDIO", "❌ No audio file found in MediaStore or recording folders.")
+        Log.d("CallLogEngine", "No audio file found in MediaStore or recording folders.")
         return null
     }
 
@@ -233,12 +232,12 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                 val diffStart = abs(fileTime - startDateMs)
 
                 if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
-                    DebugLogger.log("MATCH", "✅ Folder scan matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
+                    Log.d("CallLogEngine", "Folder scan matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
                     return file
                 }
 
                 if (cleanNumber.length >= 6 && nameLower.contains(cleanNumber)) {
-                    DebugLogger.log("MATCH", "✅ Folder scan matched audio by number: ${file.name} | Path: ${file.absolutePath}")
+                    Log.d("CallLogEngine", "Folder scan matched audio by number: ${file.name} | Path: ${file.absolutePath}")
                     return file
                 }
             }
@@ -285,16 +284,16 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     audioFile.name,
                     rawAudioBytes.toRequestBody(mimeType.toMediaTypeOrNull())
                 )
-                DebugLogger.log("PAYLOAD", "📎 Audio File Attached: ${audioFile.name} (${rawAudioBytes.size} bytes)")
+                Log.d("CallLogEngine", "Audio File Attached: ${audioFile.name} (${rawAudioBytes.size} bytes)")
             } catch (e: Exception) {
-                DebugLogger.log("ERROR", "Error reading audio file: ${e.message}")
+                Log.e("CallLogEngine", "Error reading audio file: ${e.message}")
             }
         } else {
-            DebugLogger.log("PAYLOAD", "⚠️ No Audio File Attached (null/not found)")
+            Log.d("CallLogEngine", "No Audio File Attached (null/not found)")
         }
 
         val requestUrl = "${AppConfig.SERVER_BASE_URL}/api/upload-call"
-        DebugLogger.log("HTTP_POST", "📡 Transmitting to backend URL: $requestUrl ...")
+        Log.d("CallLogEngine", "Transmitting to backend URL: $requestUrl ...")
 
         val request = Request.Builder()
             .url(requestUrl)
@@ -303,15 +302,15 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                DebugLogger.log("HTTP_ERROR", "🚨 Network Failure: ${e.message}")
+                Log.e("CallLogEngine", "Network Failure: ${e.message}")
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val responseBodyStr = response.body?.string() ?: ""
                 if (response.isSuccessful) {
-                    DebugLogger.log("HTTP_SUCCESS", "✅ Server Response 200 OK! Payload: $responseBodyStr")
+                    Log.d("CallLogEngine", "Server Response 200 OK! Payload: $responseBodyStr")
                 } else {
-                    DebugLogger.log("HTTP_FAIL", "❌ Server Error Code ${response.code}: $responseBodyStr")
+                    Log.e("CallLogEngine", "Server Error Code ${response.code}: $responseBodyStr")
                 }
             }
         })

