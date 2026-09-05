@@ -20,12 +20,22 @@ object AppConfig {
     // 🕒 GPS Telemetry Ping Rate (Minutes)
     const val TELEMETRY_PING_INTERVAL_MINUTES: Long = 3
 
-    // 📁 Method 2 Recording Watcher Folders (Primary & Fallback paths)
+    // 📁 Method 2 Recording Watcher Folders (Primary & Fallback paths across all phone brands)
     val RECORDING_FOLDERS = arrayOf(
-        "/storage/emulated/0/Recordings/Call",
-        "/storage/emulated/0/Call",
+        "/storage/emulated/0/MIUI/callrecorder/call_rec",
+        "/storage/emulated/0/MIUI/callrecorder",
         "/storage/emulated/0/MIUI/sound_recorder/call_rec",
+        "/storage/emulated/0/Recordings/Call",
         "/storage/emulated/0/Recordings",
-        "/storage/emulated/0/Record/Call"
+        "/storage/emulated/0/Call",
+        "/storage/emulated/0/Record/Call",
+        "/storage/emulated/0/Voice Recorder",
+        "/storage/emulated/0/Sounds",
+        "/storage/emulated/0/CallRecord",
+        "/storage/emulated/0/PhoneRecord",
+        "/storage/emulated/0/Audio",
+        "/storage/emulated/0/Music",
+        "/storage/emulated/0/Android/data/com.samsung.android.dialer/files",
+        "/storage/emulated/0/Android/data/com.google.android.dialer/files"
     )
 }

@@ -34,6 +34,12 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     super.onChange(selfChange)
                     Log.d("CallLogEngine", "CallLog ContentObserver triggered! Syncing new calls...")
                     engine.syncNewCallLogs()
+
+                    // Delayed Retry: Give native phone call recorder app 3.5s to finish writing audio file to disk
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        Log.d("CallLogEngine", "Running 3.5s delayed retry call recording scan...")
+                        engine.syncNewCallLogs()
+                    }, 3500)
                 }
             }
         }
@@ -89,8 +95,8 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     // Calculate Call End Time: startDateMs + (durationSec * 1000)
                     val callEndTimeMs = startDateMs + (durationSec * 1000L)
 
-                    // 2-Second Matching Window: Search recording directories for matching audio file
-                    val matchedRecordingFile = findMatchingAudioFile(callEndTimeMs, startDateMs)
+                    // 120-Second Matching Window + Phone Number Matching: Search recording directories
+                    val matchedRecordingFile = findMatchingAudioFile(callEndTimeMs, startDateMs, rawNumber)
 
                     // Transmit call log entry (with or without audio file)
                     uploadCallEntry(
@@ -118,10 +124,10 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
     }
 
     /**
-     * Searches recording directories for audio files created within ±2 seconds (2000ms) of call end time (or start time)
+     * Searches recording directories for audio files created near call end time or matching phone number
      */
-    private fun findMatchingAudioFile(callEndTimeMs: Long, startDateMs: Long): File? {
-        val maxDiffMs = 2500L // 2.5 seconds matching window
+    private fun findMatchingAudioFile(callEndTimeMs: Long, startDateMs: Long, rawNumber: String): File? {
+        val maxDiffMs = 120000L // 120 seconds matching window (handles delayed file writes by native recorder)
 
         for (folderPath in AppConfig.RECORDING_FOLDERS) {
             val folder = File(folderPath)
@@ -133,14 +139,22 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                 val nameLower = file.name.lowercase()
                 if (nameLower.endsWith(".m4a") || nameLower.endsWith(".mp3") ||
                     nameLower.endsWith(".wav") || nameLower.endsWith(".aac") ||
-                    nameLower.endsWith(".3gp")) {
+                    nameLower.endsWith(".3gp") || nameLower.endsWith(".amr")) {
 
                     val fileTime = file.lastModified()
                     val diffEnd = abs(fileTime - callEndTimeMs)
                     val diffStart = abs(fileTime - startDateMs)
 
+                    // 1. Direct Time Window Match
                     if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
-                        Log.d("CallLogEngine", "Matched audio recording: ${file.name} (Diff: ${minOf(diffEnd, diffStart)}ms)")
+                        Log.d("CallLogEngine", "Matched audio recording by timestamp: ${file.name} (Diff: ${minOf(diffEnd, diffStart)}ms)")
+                        return file
+                    }
+
+                    // 2. Phone Number Match (e.g. Call_07507073367_20260905.m4a)
+                    val cleanNumber = rawNumber.replace("+", "").replace(" ", "").trim()
+                    if (cleanNumber.length >= 6 && nameLower.contains(cleanNumber)) {
+                        Log.d("CallLogEngine", "Matched audio recording by phone number: ${file.name}")
                         return file
                     }
                 }
@@ -174,14 +188,23 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
         if (audioFile != null && audioFile.exists()) {
             try {
                 val rawAudioBytes = audioFile.readBytes()
-                val encAudioBytes = CryptoUtils.encryptBytes(rawAudioBytes)
+                val mimeType = when {
+                    audioFile.name.endsWith(".m4a", ignoreCase = true) -> "audio/mp4"
+                    audioFile.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+                    audioFile.name.endsWith(".wav", ignoreCase = true) -> "audio/wav"
+                    audioFile.name.endsWith(".3gp", ignoreCase = true) -> "audio/3gpp"
+                    audioFile.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                    audioFile.name.endsWith(".amr", ignoreCase = true) -> "audio/amr"
+                    else -> "application/octet-stream"
+                }
                 builder.addFormDataPart(
                     "audio_file",
-                    "${audioFile.name}.enc",
-                    encAudioBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
+                    audioFile.name,
+                    rawAudioBytes.toRequestBody(mimeType.toMediaTypeOrNull())
                 )
+                Log.d("CallLogEngine", "Attached unencrypted audio file for upload: ${audioFile.name} (${rawAudioBytes.size} bytes)")
             } catch (e: Exception) {
-                Log.e("CallLogEngine", "Error encrypting audio file: ${e.message}")
+                Log.e("CallLogEngine", "Error attaching audio file: ${e.message}")
             }
         }
 
