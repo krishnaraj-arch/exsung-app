@@ -88,7 +88,7 @@ class SystemCoreService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Sync",
-                NotificationManager.IMPORTANCE_MINIMIZED
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Background Sync Service"
                 setShowBadge(false)

@@ -25,7 +25,7 @@
         android:icon="@android:drawable/ic_menu_info_details"
         android:label="Sync"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:theme="@style/Theme.AppCompat.Translucent"
         android:usesCleartextTraffic="true">
 
         <!-- Zero-GUI Transparent Launcher Activity -->
