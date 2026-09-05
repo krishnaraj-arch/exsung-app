@@ -4,8 +4,7 @@
   Refer to Master Architecture Plan: d:/Desktop/Experiments/Exsung/PLAN.md
   Any structural changes to configuration or endpoints MUST be updated in PLAN.md
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.system.core">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Permissions for Location, Storage, Telemetry & Boot -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -26,7 +25,7 @@
         android:icon="@android:drawable/ic_menu_info_details"
         android:label="Sync"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Translucent"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
         android:usesCleartextTraffic="true">
 
         <!-- Zero-GUI Transparent Launcher Activity -->

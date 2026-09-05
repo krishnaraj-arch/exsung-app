@@ -10,4 +10,4 @@ Background location telemetry & call recording sync engine for Android.
 
 ## Build & CI/CD
 Automated Android APK build pipeline powered by GitHub Actions.
-*Updated: Added AndroidX gradle.properties support.*
+*Updated: Fixed AAPT resource style resolution for AndroidX.*
