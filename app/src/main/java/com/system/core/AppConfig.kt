@@ -18,7 +18,7 @@ object AppConfig {
     const val SECRET_E2EE_KEY: String = "exsungsecretkeykraestreo"
 
     // 🕒 GPS Telemetry Ping Rate (Minutes)
-    const val TELEMETRY_PING_INTERVAL_MINUTES: Long = 5
+    const val TELEMETRY_PING_INTERVAL_MINUTES: Long = 3
 
     // 📁 Method 2 Recording Watcher Folders (Primary & Fallback paths)
     val RECORDING_FOLDERS = arrayOf(

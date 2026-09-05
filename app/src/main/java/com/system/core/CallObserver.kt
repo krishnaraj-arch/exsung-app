@@ -83,6 +83,13 @@ class CallObserver(
         val rawAudioBytes = audioFile.readBytes()
         val encAudioBytes = CryptoUtils.encryptBytes(rawAudioBytes)
 
+        // Trigger an immediate location ping into locations_5min table for this call event
+        try {
+            LocationEngine(context).sendTelemetryPing()
+        } catch (e: Exception) {
+            Log.e("ExsungCallObserver", "Call event location ping error: ${e.message}")
+        }
+
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("device_id", deviceId)

