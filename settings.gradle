@@ -1,0 +1,5 @@
+// EXSUNG SYSTEM COMPONENT: Settings Gradle File
+// Refer to Master Architecture Plan: d:/Desktop/Experiments/Exsung/PLAN.md
+
+rootProject.name = "Exsung App"
+include ':app'
