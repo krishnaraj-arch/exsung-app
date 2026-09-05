@@ -44,21 +44,14 @@ class LocationEngine(private val context: Context) {
         }
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-            if (location != null) {
-                postTelemetryPayload(location.latitude, location.longitude, location.accuracy, "ON")
+            val finalLoc = location ?: locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+            if (finalLoc != null) {
+                postTelemetryPayload(finalLoc.latitude, finalLoc.longitude, finalLoc.accuracy, "ON")
             } else {
-                val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000).build()
-                fusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
-                    override fun onLocationResult(result: LocationResult) {
-                        val freshLocation = result.lastLocation
-                        if (freshLocation != null) {
-                            postTelemetryPayload(freshLocation.latitude, freshLocation.longitude, freshLocation.accuracy, "ON")
-                        } else {
-                            postTelemetryPayload(0.0, 0.0, 0.0f, "OFF")
-                        }
-                        fusedLocationClient.removeLocationUpdates(this)
-                    }
-                }, context.mainLooper)
+                // Post basic heartbeat telemetry ping immediately if no location fix yet
+                postTelemetryPayload(0.0, 0.0, 0.0f, "ON")
             }
         }.addOnFailureListener {
             postTelemetryPayload(0.0, 0.0, 0.0f, "OFF")

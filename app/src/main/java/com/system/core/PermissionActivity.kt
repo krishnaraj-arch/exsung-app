@@ -50,22 +50,14 @@ class PermissionActivity : AppCompatActivity() {
             val componentName = ComponentName(context, PermissionActivity::class.java)
             val pm = context.packageManager
 
+            // Note: Disabling main activity component kills the app process on Android 10+
+            // Keep component enabled so foreground service is never killed by OS
             try {
-                if (hasMissingPermissions) {
-                    // Show icon if permissions revoked so user can open app and re-grant
-                    pm.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
-                } else {
-                    // Hide icon when all permissions are granted
-                    pm.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
-                }
+                pm.setComponentEnabledSetting(
+                    componentName,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
